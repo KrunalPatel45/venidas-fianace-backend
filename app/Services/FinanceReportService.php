@@ -76,6 +76,54 @@ class FinanceReportService
             ->where('user_id', $user->id)
             ->pluck('id');
 
+        $memberLoanIds = Loan::query()
+            ->where('borrower_id', $user->id)
+            ->pluck('id');
+
+        // Member's total paid monthly investments.
+        $memberInvestmentPaise = $this->sumPaise(
+            MonthlyInvestment::query()
+                ->whereIn('society_account_id', $accountIds)
+                ->where('status', 'paid')
+        );
+
+        // All members' total paid monthly investments.
+        $societyInvestmentPaise = $this->sumPaise(
+            MonthlyInvestment::query()
+                ->where('status', 'paid')
+        );
+
+        // Interest actually received by society.
+        $societyInterestPaise = $this->sumPaise(
+            FundEntry::query()
+                ->where('reference_type', 'loan_interest')
+                ->where('direction', 'credit')
+        );
+
+        // Estimated proportional interest earnings.
+        // Dashboard only: no database writes.
+        $memberInterestPaise = 0;
+
+        if ($societyInvestmentPaise > 0) {
+            $memberInterestPaise = intdiv(
+                ($societyInterestPaise * $memberInvestmentPaise)
+                    + intdiv($societyInvestmentPaise, 2),
+                $societyInvestmentPaise
+            );
+        }
+
+        $totalEarningsPaise = $memberInterestPaise;
+
+        $investmentWithEarningsPaise =
+            $memberInvestmentPaise + $totalEarningsPaise;
+
+        // Interest paid by this member on their own loans.
+        $interestPaidPaise = $this->sumPaise(
+            LoanInterestDue::query()
+                ->whereIn('loan_id', $memberLoanIds)
+                ->where('status', 'paid')
+        );
+
         return [
             'member' => [
                 'id' => $user->id,
@@ -83,7 +131,42 @@ class FinanceReportService
                 'name' => $user->name,
                 'name_gu' => $user->name_gu,
             ],
+
             'accounts' => $accountIds->count(),
+
+            'total_investment' => Money::fromPaise(
+                $memberInvestmentPaise
+            ),
+
+            'estimated_interest_earned' => Money::fromPaise(
+                $memberInterestPaise
+            ),
+
+            'total_earnings' => Money::fromPaise(
+                $totalEarningsPaise
+            ),
+
+            'investment_with_earnings' => Money::fromPaise(
+                $investmentWithEarningsPaise
+            ),
+
+            'investment_share_percentage' =>
+                $societyInvestmentPaise > 0
+                    ? round(
+                        ($memberInvestmentPaise /
+                            $societyInvestmentPaise) * 100,
+                        4
+                    )
+                    : 0,
+
+            'earnings_type' => 'estimated',
+
+            // New: Total loan interest paid.
+            'total_interest_paid' => Money::fromPaise(
+                $interestPaidPaise
+            ),
+
+            // Existing member dashboard calculations.
             'pending_investment' => Money::fromPaise(
                 $this->sumPaise(
                     MonthlyInvestment::query()
@@ -91,23 +174,22 @@ class FinanceReportService
                         ->where('status', 'pending')
                 )
             ),
+
             'outstanding_principal' => Money::fromPaise(
                 $this->sumPaise(
                     Loan::where('borrower_id', $user->id),
                     'outstanding_principal'
                 )
             ),
+
             'pending_interest' => Money::fromPaise(
                 $this->sumPaise(
                     LoanInterestDue::query()
                         ->where('status', 'pending')
-                        ->whereIn(
-                            'loan_id',
-                            Loan::where('borrower_id', $user->id)
-                                ->select('id')
-                        )
+                        ->whereIn('loan_id', $memberLoanIds)
                 )
             ),
+
             'currency' => 'INR',
         ];
     }

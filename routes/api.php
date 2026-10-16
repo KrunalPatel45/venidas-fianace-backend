@@ -48,6 +48,16 @@ Route::prefix('v1')->group(function () {
             'me'
         ]);
 
+        Route::get(
+            '/society/dashboard',
+            [\App\Http\Controllers\Api\SocietyDashboardController::class, 'index']
+        );
+
+        Route::get(
+            '/my/dashboard',
+            [MemberDashboardController::class, 'index']
+        );
+
         Route::post('/logout', [
             AuthController::class,
             'logout'
@@ -233,12 +243,6 @@ Route::prefix('v1')->group(function () {
                     '/finance/reconciliation',
                     [FinancialReconciliationController::class, 'index']
                 );
-
-                Route::get(
-                    '/my/dashboard',
-                    [MemberDashboardController::class, 'index']
-                );
-
                 Route::get(
                     '/dashboard',
                     [AdminDashboardController::class, 'index']
